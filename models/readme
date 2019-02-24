@@ -1,7 +1,8 @@
 Here are he explanations of the files located in this folder:
 
 log_models.csv
-This file has the models' info. for predicting survival probabilities in 11 consecutive time stamps. The models are restored as a table. Each row associated different time stamps.
+This file has the models' info. for predicting survival probabilities in 11 consecutive time stamps. 
+The models are restored as a table. Each row associated different time stamps.
 The first row is the logistic algorithm for predicting survival chance for the first month.
 The second row is the logistic algorithm for predicting survival chance for the first year.
 ....
