@@ -3,7 +3,7 @@
 ### Transplantation Survival Probabilities over Time with a Monotonic 
 ### Probability Constraint
 
-
+   
 ## cat_changer() function re-groups values in a categorical variable
 ## data_set: a data object that contains the varaible that we want to re-group
 ## var: the variable that we want to re-group
