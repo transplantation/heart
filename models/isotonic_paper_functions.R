@@ -3,7 +3,7 @@
 ### Transplantation Survival Probabilities over Time with a Monotonic 
 ### Probability Constraint
 
-   
+
 ## cat_changer() function re-groups values in a categorical variable
 ## data_set: a data object that contains the varaible that we want to re-group
 ## var: the variable that we want to re-group
@@ -12,8 +12,8 @@
 ## val_old and val_new should be ONE-TO-ONE corresponds to each other
 ## Other levels that are not specified in val_old are put into "OTHER"
 ## Return value: a data object after re-groupping levels in the given variable
-cat_changer <- function(data_set,var,val_old,val_new){
-  temp_var <- dplyr::pull(data_set,var)
+cat_changer<- function(data_set,var,val_old,val_new){
+  temp_var <- as.character(dplyr::pull(data_set,var))
   cum_index <-c()
   for (i in 1:length(val_old)){
     index <- which(data_set[,var]==val_old[i])
@@ -25,6 +25,7 @@ cat_changer <- function(data_set,var,val_old,val_new){
   data_set[,var] <- temp_var
   return(data_set)
 }
+
 
 
 ## detect_terms() detects if the given term is in a vector
@@ -707,7 +708,6 @@ survivals_cal<-function(patients){
   return(survival_Probability)
   
 }
-
 
 
 
