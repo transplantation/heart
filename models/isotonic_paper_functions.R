@@ -388,384 +388,384 @@ find_U <- function(x){
 ############monotonic survival prediction#############
 ############monotonic survival prediction#############
 ######################################################
-survivals_cal<-function(patients){
-  
-  #cat("\014") # Clear the console
-  
-  source("https://raw.githubusercontent.com/transplantation/heart/master/models/isotonic_paper_functions.R")
-  library(shiny)
-  # read csv file
-  #file1 <- read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/example_data.csv", stringsAsFactors = FALSE)
-  file1 <- patients
-  
-  # load important variables (UNOS) and corresponding information
-  variables <- read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/important_variables.csv")
-  # Load the center (mean) and spread (standard devation) for numerical variables
-  Num_Scales <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/Num_Scales.rds")))
-  # Load the levels for categroical variables
-  Cat_Levels <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/Cat_Levels.rds")))
-  # Load the features from LASSO selection 
-  features <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/LASSO_features.rds")))
-  
-  log_models<-read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/log_models.csv",row.names = 1)
-  
-  is_error<-"NO"
-  #error for no of rows equal zero
-  error_no<-""
-  # check if the variables are provided
-  error_vars<-""
-  # error if the numerical variables are out of range
-  error_range<-""
-  # error if the value of categorical variables are valid
-  error_cat<-""
-  
-  if (nrow(file1)==0){error_no<- c("  Your file is empty  ")
-  is_error<-"YES"
-  }
-  
-  # the rest will run only if the is_error=="NO"
-  if(is_error=="NO"){
-    
-    # we just work with first 10 patients' data
-    if (nrow(file1)>10) file1 <- file1[1:10,]
-    patients_no<-nrow(file1)
-    
-    num_vars <- as.character(variables$Name[variables$Type=="NUM"])
-    cat_vars <- as.character(variables$Name[variables$Type=="CAT"])
-    cat_vars[which(cat_vars=="ETH_MAT")] <- "ETHCAT_DON" 
-    index <- which(!(c(num_vars, cat_vars)%in%colnames(file1)))
-    
-    
-    
-    for (i in 1:length(num_vars)){
-      file1[,num_vars[i]] <- as.numeric(file1[,num_vars[i]])
-    }
-    
-    
-    if (length(index)>0){
-      # return("One or more variables are not found. Please build file based on the Example CSV.")
-      #__
-      error_vars<- c("  One or more variables are not found. Please build file based on the Example CSV.  ")
-      is_error<-"YES"
-    }
-    
-    # the rest will run only if the is_error=="NO"
-    if(is_error=="NO"){
-      Num_Range <- matrix(c(5, 10, 0, 0, 0, 10, 0, 120, 120, 10, 120, 10, 0, 100, 45, 100, 3000, 3000, 45, 200, 230, 230, 45, 230, 720, 30) ,ncol=2, nrow=13, byrow=F)
-      
-      # ISCHTIME
-      file1$ISCHTIME <- file1$ISCHTIME*60
-      
-      # a function designed for checking if the numerical variables selected by user are within a range
-      out_range <- check_range(file1, num_vars, Num_Range)
-      
-      
-      if (sum(out_range)>0){
-        error_range<-paste("One or more values for", num_vars[which(out_range==1)],
-                           "are outside of the following range: (", Num_Range[which(out_range==1),1],
-                           ",", Num_Range[which(out_range==1),2],").")
-        is_error<-"YES"
-      }else{
-        error_range<- c("  All the numerical values are within the expected range. ")
-      }
-      
-      # the rest will run only if the is_error=="NO"
-      if(is_error=="NO"){
-        
-        # Now, change categorical variables to our features
-        # ANCEF
-        find_UNKNOWN <- which(file1$ANCEF=="UNKNOWN")
-        if (length(find_UNKNOWN)!=0) file1$ANCEF[find_UNKNOWN] <- "UNKOWN"
-        
-        # CARD_SURG
-        find_UNKNOWN <- which(file1$CARD_SURG=="UNKNOWN")
-        if (length(find_UNKNOWN)!=0) file1$CARD_SURG[find_UNKNOWN] <- "UNKOWN"
-        
-        # DIAG
-        val_old <- c(1000,1001,1002,1003,1004,1005,1006,1049,1007,1200)
-        val_new <- c("DILATED_MYOPATHY_IDI","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_ISC","CORONARY")
-        file1 <- cat_changer(file1,var="DIAG",val_old,val_new)
-        
-        # CHEST_XRAY_DON
-        val_old <- c(0,1,2,3,4,5,998,999)
-        val_new <- c(NA,NA,"NOR","AB","AB","ABboth",NA,NA)
-        file1 <- cat_changer(file1,var="CHEST_XRAY_DON",val_old,val_new)
-        
-        # CMV_DON & EBV_SEROSTATUS
-        val_old <- c("C","I","N","ND","P","U")
-        val_new <- c(NA,NA,"Neg",NA,"POS",NA)
-        file1 <- cat_changer(file1,var="CMV_DON",val_old,val_new)
-        file1 <- cat_changer(file1,var="EBV_SEROSTATUS",val_old,val_new)
-        
-        # COD_CAD_DON
-        val_old <- c(1,2,3,4,999,"Unknown")
-        val_new <- c("ANOXIA","CEREBROVASCULAR_STROKE","HEAD_TRAUMA","OTHER","OTHER",NA)
-        file1 <- cat_changer(file1,var="COD_CAD_DON",val_old,val_new)
-        
-        # CORONARY_ANGIO
-        val_old <- c(1,2,3)
-        val_new <- c("NO", "YES", "YES")
-        file1 <- cat_changer(file1,var="CORONARY_ANGIO",val_old,val_new)
-        
-        # DIAB
-        val_old <- c(1,2,3,4,5,998)
-        val_new<-c("no","one","two","OTHER","OTHER",NA)
-        file1 <- cat_changer(file1,var="DIAB",val_old,val_new)
-        
-        # DIAG 
-        val_old <- c(1000,1001,1002,1003,1004,1005,1006,1049,1007,1200)
-        val_new <- c("DILATED_MYOPATHY_IDI","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_ISC","CORONARY")
-        file1 <- cat_changer(file1,var="DIAG",val_old,val_new)
-        file1 <- cat_changer(file1,var="TCR_DGN",val_old,val_new)
-        file1 <- cat_changer(file1,var="THORACIC_DGN",val_old,val_new)
-        
-        # DOPAMINE
-        find_UNKNOWN <- which(file1$DOPAMINE=="UNKNOWN")
-        if (length(find_UNKNOWN)!=0) file1$DOPAMINE[find_UNKNOWN] <- "UNKOWN"
-        
-        # EDUCATION
-        val_old <- c(1,2,3,4,5,6,996,998)
-        val_new <- c("a","a","b","c","d","d",NA,NA)
-        file1 <- cat_changer(file1,var="EDUCATION",val_old,val_new)
-        
-        # ETH_MAT
-        file1$ETH_MAT <- NA
-        for(i in 1:nrow(file1)){
-          if(!is.na(file1$ETHCAT[i])){
-            if(!is.na(file1$ETHCAT_DON[i])){
-              if(file1$ETHCAT_DON[i]==file1$ETHCAT[i]){
-                file1$ETH_MAT[i] <- "Y"
-              }else{
-                file1$ETH_MAT[i]<-"N"
-              }
-            }
-          }
-        }
-        
-        # ETHCAT, ETHCAT_DON
-        val_old <- c(1,2,4,5,6,7,9,998)
-        val_new <- c("w","b","h","o","o","o","o",NA)
-        file1 <- cat_changer(file1,var="ETHCAT",val_old,val_new)
-        file1 <- cat_changer(file1,var="ETHCAT_DON",val_old,val_new)
-        
-        # FUNC_STAT_TCR, FUNC_STAT_TRR
-        val_old <- c(1,2,3,996,998,2010,2020,2030,2040,2050,2060,2070,2080,2090,2100)
-        val_new <- c("A","B","B",NA,NA,"C","C","C","C","D","D","D","E","E","E")
-        file1 <- cat_changer(file1,var="FUNC_STAT_TRR",val_old,val_new)
-        file1 <- cat_changer(file1,var="FUNC_STAT_TCR",val_old,val_new)
-        
-        # HEPARIN
-        find_UNKNOWN <- which(file1$HEPARIN=="UNKNOWN")
-        if (length(find_UNKNOWN)!=0) file1$HEPARIN[find_UNKNOWN] <- "UNKOWN"
-        
-        # HLAMIS
-        val_old <- 0:6
-        val_new <- c("a","a","a","b","c","f","e")
-        file1 <- cat_changer(file1,var="HLAMIS",val_old,val_new)
-        
-        # INIT_STAT
-        val_old <- c(2010,2020,2030,2090,2999)
-        val_new <- c("ONE","ONE","TWO","ONE","OTHER")
-        file1 <- cat_changer(file1,var="INIT_STAT",val_old,val_new)
-        
-        # LAST_INACT_REASON
-        val_old <- seq(1,14)
-        val_new <- c("ONE", "ONE","ONE","ONE","ONE", "ONE","TWO","ONE","TWO", "ONE","ONE","ONE","ONE","ONE")
-        file1 <- cat_changer(file1,var="LAST_INACT_REASON",val_old,val_new)
-        
-        # PRI_PAYMENT_TCR, PRI_PAYMENT_TRR
-        val_old <- seq(1,14)
-        val_new<-c("pv","pbma","pbmcffs","pbmoth","pbmoth","pbmoth","pbmoth","OTHER","OTHER","OTHER","OTHER","OTHER","OTHER","OTHER")
-        file1 <- cat_changer(file1,var="PRI_PAYMENT_TCR",val_old,val_new)
-        file1 <- cat_changer(file1,var="PRI_PAYMENT_TRR",val_old,val_new)
-        
-        # PRIOR_CARD_SURG_TYPE_TCR
-        val_old <- seq(1,31)
-        val_new <- c("CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV",
-                     "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER",
-                     "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG")
-        file1 <- cat_changer(file1,var="PRIOR_CARD_SURG_TYPE_TCR",val_old,val_new)
-        
-        # PROC_TY_HR
-        val_old <- c(1,2)
-        val_new <- c("Bicaval","Traditional")
-        file1 <- cat_changer(file1,var="PROC_TY_HR",val_old,val_new)
-        
-        # REGION
-        val_old <- seq(1,11)
-        val_new <- c("NE","NE","SE","SE","W","W","MW","MW","NE","MW","SE")
-        file1 <- cat_changer(file1,var="REGION",val_old,val_new)
-        
-        # SHARE_TY"
-        val_old <- c(3,4)
-        val_new <- c("LOCAL","REGIONAL")
-        file1 <- cat_changer(file1,var="SHARE_TY",val_old,val_new)
-        
-        # STERNOTOMY_TRR
-        val_old <- c(1,2,3,998)
-        val_new <- c("ONE", "MORE","MORE", NA)
-        file1 <- cat_changer(file1,var="STERNOTOMY_TRR",val_old,val_new)
-        ###
-        if (nrow(file1)==1){
-          file1 <- as.data.frame(t(apply(file1, 2, function(x) gsub("^$| ^", NA, x))), stringsAsFactors=FALSE)
-        }else{
-          file1 <- as.data.frame(apply(file1, 2, function(x) gsub("^$| ^", NA, x)), stringsAsFactors=FALSE)
-        }
-        
-        file1[is.na(file1)] <- "UNKOWN"
-        
-        if (nrow(file1)==1){
-          file1 <- as.data.frame(t(apply(file1, 2, find_U)))
-        }else{
-          file1 <- as.data.frame(apply(file1, 2, find_U))
-        }
-        
-        file1[,num_vars] <- apply(file1[,num_vars],2,as.numeric)
-        
-        
-        ####
-        # One-hot encoding for the data
-        cat_vars <- c(cat_vars, "ETH_MAT")
-        for (i in 1:length(cat_vars)){
-          file1[,cat_vars[i]] <- gsub(" ", "", file1[,cat_vars[i]],fixed=TRUE)
-          file1[,cat_vars[i]] <- factor(file1[,cat_vars[i]], levels=Cat_Levels[[i]])
-        }
-        
-        #new_variables <- c("ETH_MAT", "ANCEF", "DOPAMINE", "HEPARIN", "CARD_SURG")
-        CAT_match <- check_levels(file1, cat_vars, Cat_Levels)
-        
-        if (sum(CAT_match)>0){
-          return(paste("One or more values for", cat_vars[which(CAT_match==1)],
-                       "are invalid."))
-        }else{
-          renderText("All the categorical values are valid. Now. ")
-        }
-        
-        
-        if (sum(CAT_match)>0){
-          error_cat<-paste("One or more values for", cat_vars[which(CAT_match==1)],
-                           "are invalid.")
-          is_error<-"YES"
-          
-        }else{
-          error_cat<-paste(" All categorical values are valid. ")
-        }
-        if(is_error=="NO"){
-          
-          temp.dum <- dummy_maker_app(file1, cat_vars)
-          
-          
-          all_variables <- c()
-          for (i in 1:11){
-            all_variables <- c(all_variables, as.character(features[[i]][[1]]))
-          }
-          all_variables <- unique(all_variables)
-          all_num_index <- which(all_variables%in%num_vars)
-          all_num <- all_variables[all_num_index]  # num variables from LASSO
-          all_cat <- all_variables[-all_num_index] # cat variables from LASSO
-          
-          file1.dum <- matrix(NA, ncol=length(all_variables), nrow=patients_no) 
-          colnames(file1.dum) <- all_variables
-          file1.dum <- as.data.frame(file1.dum)
-          
-          file1.dum[,all_num] <- file1[,all_num]
-          
-          for (i in 1:length(all_cat)){
-            find_vars <- which(all_cat[i]%in%colnames(temp.dum))
-            if (length(find_vars)==0){
-              file1.dum[,all_cat[i]] <- 0 # zero vector
-            }else{
-              file1.dum[,all_cat[i]] <- temp.dum[,all_cat[i]]
-            }
-          }
-          
-          all_year_data <- rep(list(NA),11)
-          for (i in 1:11){
-            temp_vars <- as.character(features[[i]][[1]])
-            temp_data <- file1.dum[,temp_vars]
-            temp_index <- which(temp_vars%in%all_num)
-            temp_cat_index <- setdiff(1:ncol(temp_data), temp_index)
-            for (j in 1:length(temp_cat_index)){
-              temp_data[,temp_cat_index[j]] <- factor(temp_data[,temp_cat_index[j]])
-            }
-            temp_scale <- Num_Scales[[i]]
-            for (j in 1:length(temp_index)){
-              var_name <- temp_vars[temp_index[j]]
-              find_index <- which(temp_scale$Var_names==var_name)
-              temp_data[,var_name] <- (temp_data[,var_name]-temp_scale[find_index,2])/temp_scale[find_index,3]
-            }
-            all_year_data[[i]] <- temp_data
-          }
-          
-          # the following is for prediction but I use the matrix
-          
-          names(all_year_data) <- paste0("Year",0:10)
-          survivals <- matrix(NA, ncol=11, nrow=patients_no)
-          survival_Probability <- matrix(NA, ncol=11, nrow=patients_no)
-          
-          # predictions<-matrix(NA, ncol = 11, nrow = patients_no)
-          
-          for (i in 1:11){
-            # Insert one column with all 1s for the intercept
-            X <- cbind(INTERCEPT=rep(1,nrow(file1.dum)), all_year_data[[i]])
-            # Make sure the data type is numeric
-            if (nrow(X)==1){
-              X <- as.matrix(t(apply(X, 2, as.numeric)))}else{
-                X <- as.matrix(apply(X, 2, as.numeric))
-              }
-            # Get the coefficient matrix for the corresponding time point
-            BETA_X <- log_models[i,colnames(X)]
-            # Find the fitted value for each patient 
-            Y <- as.matrix(BETA_X)%*%t(as.matrix(X))
-            # Find the survival probability for each patient
-            survivals[,i] <- exp(Y)/(1+exp(Y))
-          }
-          
-          survivals_reverse <- matrix(NA, ncol=11, nrow=nrow(file1.dum))
-          for (i in 1:11){
-            survivals_reverse[,i] <- survivals[,(12-i)]
-          }
-          
-          # apply isotonic regression to the probability matrix
-          survivals_isotonic <- t(apply(survivals_reverse, 1, function(x) isoreg(x)$yf))
-          
-          for (i in 1:11){
-            survival_Probability[,i] <- survivals_isotonic[,(12-i)]
-          } 
-          
-          
-          # the survival probability matrix after isotonic regression is applied
-          survival_Probability <- cbind(1:patients_no, survival_Probability)
-          colnames(survival_Probability) <- c("Patient_No"," Month_1 Survival Prob.", paste(" Year_", 1:10, " Survival Prob.",sep=""))
-          
-          survival_Probability <- as.data.frame(survival_Probability) 
-          outcome<-list()
-          outcome$survival_Probability<-survival_Probability
-          outcome$patients_no<-patients_no
-          outcome$error_no<-error_no
-          outcome$error_vars<-error_vars
-          outcome$error_range<-error_range
-          outcome$error_cat<-error_cat
-          
-          return(outcome)
-        }
-      }
-    }
-  }
-  if(is_error=="YES"){
-    outcome<-list()
-    outcome$survival_Probability<-print(message)
-    outcome$patients_no<-0
-    outcome$error_no<-error_no
-    outcome$error_vars<-error_vars
-    outcome$error_range<-error_range
-    outcome$error_cat<-error_cat
-    return(outcome)
-  }
-  
-}
-
-
+# survivals_cal<-function(patients){
+#   
+#   #cat("\014") # Clear the console
+#   
+#   source("https://raw.githubusercontent.com/transplantation/heart/master/models/isotonic_paper_functions.R")
+#   library(shiny)
+#   # read csv file
+#   #file1 <- read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/example_data.csv", stringsAsFactors = FALSE)
+#   file1 <- patients
+#   
+#   # load important variables (UNOS) and corresponding information
+#   variables <- read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/important_variables.csv")
+#   # Load the center (mean) and spread (standard devation) for numerical variables
+#   Num_Scales <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/Num_Scales.rds")))
+#   # Load the levels for categroical variables
+#   Cat_Levels <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/Cat_Levels.rds")))
+#   # Load the features from LASSO selection 
+#   features <- readRDS(gzcon(url("https://github.com/transplantation/heart/raw/master/models/LASSO_features.rds")))
+#   
+#   log_models<-read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/log_models.csv",row.names = 1)
+#   
+#   is_error<-"NO"
+#   #error for no of rows equal zero
+#   error_no<-""
+#   # check if the variables are provided
+#   error_vars<-""
+#   # error if the numerical variables are out of range
+#   error_range<-""
+#   # error if the value of categorical variables are valid
+#   error_cat<-""
+#   
+#   if (nrow(file1)==0){error_no<- c("  Your file is empty  ")
+#   is_error<-"YES"
+#   }
+#   
+#   # the rest will run only if the is_error=="NO"
+#   if(is_error=="NO"){
+#     
+#     # we just work with first 10 patients' data
+#     if (nrow(file1)>10) file1 <- file1[1:10,]
+#     patients_no<-nrow(file1)
+#     
+#     num_vars <- as.character(variables$Name[variables$Type=="NUM"])
+#     cat_vars <- as.character(variables$Name[variables$Type=="CAT"])
+#     cat_vars[which(cat_vars=="ETH_MAT")] <- "ETHCAT_DON" 
+#     index <- which(!(c(num_vars, cat_vars)%in%colnames(file1)))
+#     
+#     
+#     
+#     for (i in 1:length(num_vars)){
+#       file1[,num_vars[i]] <- as.numeric(file1[,num_vars[i]])
+#     }
+#     
+#     
+#     if (length(index)>0){
+#       # return("One or more variables are not found. Please build file based on the Example CSV.")
+#       #__
+#       error_vars<- c("  One or more variables are not found. Please build file based on the Example CSV.  ")
+#       is_error<-"YES"
+#     }
+#     
+#     # the rest will run only if the is_error=="NO"
+#     if(is_error=="NO"){
+#       Num_Range <- matrix(c(5, 10, 0, 0, 0, 10, 0, 120, 120, 10, 120, 10, 0, 100, 45, 100, 3000, 3000, 45, 200, 230, 230, 45, 230, 720, 30) ,ncol=2, nrow=13, byrow=F)
+#       
+#       # ISCHTIME
+#       file1$ISCHTIME <- file1$ISCHTIME*60
+#       
+#       # a function designed for checking if the numerical variables selected by user are within a range
+#       out_range <- check_range(file1, num_vars, Num_Range)
+#       
+#       
+#       if (sum(out_range)>0){
+#         error_range<-paste("One or more values for", num_vars[which(out_range==1)],
+#                            "are outside of the following range: (", Num_Range[which(out_range==1),1],
+#                            ",", Num_Range[which(out_range==1),2],").")
+#         is_error<-"YES"
+#       }else{
+#         error_range<- c("  All the numerical values are within the expected range. ")
+#       }
+#       
+#       # the rest will run only if the is_error=="NO"
+#       if(is_error=="NO"){
+#         
+#         # Now, change categorical variables to our features
+#         # ANCEF
+#         find_UNKNOWN <- which(file1$ANCEF=="UNKNOWN")
+#         if (length(find_UNKNOWN)!=0) file1$ANCEF[find_UNKNOWN] <- "UNKOWN"
+#         
+#         # CARD_SURG
+#         find_UNKNOWN <- which(file1$CARD_SURG=="UNKNOWN")
+#         if (length(find_UNKNOWN)!=0) file1$CARD_SURG[find_UNKNOWN] <- "UNKOWN"
+#         
+#         # DIAG
+#         val_old <- c(1000,1001,1002,1003,1004,1005,1006,1049,1007,1200)
+#         val_new <- c("DILATED_MYOPATHY_IDI","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_ISC","CORONARY")
+#         file1 <- cat_changer(file1,var="DIAG",val_old,val_new)
+#         
+#         # CHEST_XRAY_DON
+#         val_old <- c(0,1,2,3,4,5,998,999)
+#         val_new <- c(NA,NA,"NOR","AB","AB","ABboth",NA,NA)
+#         file1 <- cat_changer(file1,var="CHEST_XRAY_DON",val_old,val_new)
+#         
+#         # CMV_DON & EBV_SEROSTATUS
+#         val_old <- c("C","I","N","ND","P","U")
+#         val_new <- c(NA,NA,"Neg",NA,"POS",NA)
+#         file1 <- cat_changer(file1,var="CMV_DON",val_old,val_new)
+#         file1 <- cat_changer(file1,var="EBV_SEROSTATUS",val_old,val_new)
+#         
+#         # COD_CAD_DON
+#         val_old <- c(1,2,3,4,999,"Unknown")
+#         val_new <- c("ANOXIA","CEREBROVASCULAR_STROKE","HEAD_TRAUMA","OTHER","OTHER",NA)
+#         file1 <- cat_changer(file1,var="COD_CAD_DON",val_old,val_new)
+#         
+#         # CORONARY_ANGIO
+#         val_old <- c(1,2,3)
+#         val_new <- c("NO", "YES", "YES")
+#         file1 <- cat_changer(file1,var="CORONARY_ANGIO",val_old,val_new)
+#         
+#         # DIAB
+#         val_old <- c(1,2,3,4,5,998)
+#         val_new<-c("no","one","two","OTHER","OTHER",NA)
+#         file1 <- cat_changer(file1,var="DIAB",val_old,val_new)
+#         
+#         # DIAG 
+#         val_old <- c(1000,1001,1002,1003,1004,1005,1006,1049,1007,1200)
+#         val_new <- c("DILATED_MYOPATHY_IDI","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_OTH","DILATED_MYOPATHY_ISC","CORONARY")
+#         file1 <- cat_changer(file1,var="DIAG",val_old,val_new)
+#         file1 <- cat_changer(file1,var="TCR_DGN",val_old,val_new)
+#         file1 <- cat_changer(file1,var="THORACIC_DGN",val_old,val_new)
+#         
+#         # DOPAMINE
+#         find_UNKNOWN <- which(file1$DOPAMINE=="UNKNOWN")
+#         if (length(find_UNKNOWN)!=0) file1$DOPAMINE[find_UNKNOWN] <- "UNKOWN"
+#         
+#         # EDUCATION
+#         val_old <- c(1,2,3,4,5,6,996,998)
+#         val_new <- c("a","a","b","c","d","d",NA,NA)
+#         file1 <- cat_changer(file1,var="EDUCATION",val_old,val_new)
+#         
+#         # ETH_MAT
+#         file1$ETH_MAT <- NA
+#         for(i in 1:nrow(file1)){
+#           if(!is.na(file1$ETHCAT[i])){
+#             if(!is.na(file1$ETHCAT_DON[i])){
+#               if(file1$ETHCAT_DON[i]==file1$ETHCAT[i]){
+#                 file1$ETH_MAT[i] <- "Y"
+#               }else{
+#                 file1$ETH_MAT[i]<-"N"
+#               }
+#             }
+#           }
+#         }
+#         
+#         # ETHCAT, ETHCAT_DON
+#         val_old <- c(1,2,4,5,6,7,9,998)
+#         val_new <- c("w","b","h","o","o","o","o",NA)
+#         file1 <- cat_changer(file1,var="ETHCAT",val_old,val_new)
+#         file1 <- cat_changer(file1,var="ETHCAT_DON",val_old,val_new)
+#         
+#         # FUNC_STAT_TCR, FUNC_STAT_TRR
+#         val_old <- c(1,2,3,996,998,2010,2020,2030,2040,2050,2060,2070,2080,2090,2100)
+#         val_new <- c("A","B","B",NA,NA,"C","C","C","C","D","D","D","E","E","E")
+#         file1 <- cat_changer(file1,var="FUNC_STAT_TRR",val_old,val_new)
+#         file1 <- cat_changer(file1,var="FUNC_STAT_TCR",val_old,val_new)
+#         
+#         # HEPARIN
+#         find_UNKNOWN <- which(file1$HEPARIN=="UNKNOWN")
+#         if (length(find_UNKNOWN)!=0) file1$HEPARIN[find_UNKNOWN] <- "UNKOWN"
+#         
+#         # HLAMIS
+#         val_old <- 0:6
+#         val_new <- c("a","a","a","b","c","f","e")
+#         file1 <- cat_changer(file1,var="HLAMIS",val_old,val_new)
+#         
+#         # INIT_STAT
+#         val_old <- c(2010,2020,2030,2090,2999)
+#         val_new <- c("ONE","ONE","TWO","ONE","OTHER")
+#         file1 <- cat_changer(file1,var="INIT_STAT",val_old,val_new)
+#         
+#         # LAST_INACT_REASON
+#         val_old <- seq(1,14)
+#         val_new <- c("ONE", "ONE","ONE","ONE","ONE", "ONE","TWO","ONE","TWO", "ONE","ONE","ONE","ONE","ONE")
+#         file1 <- cat_changer(file1,var="LAST_INACT_REASON",val_old,val_new)
+#         
+#         # PRI_PAYMENT_TCR, PRI_PAYMENT_TRR
+#         val_old <- seq(1,14)
+#         val_new<-c("pv","pbma","pbmcffs","pbmoth","pbmoth","pbmoth","pbmoth","OTHER","OTHER","OTHER","OTHER","OTHER","OTHER","OTHER")
+#         file1 <- cat_changer(file1,var="PRI_PAYMENT_TCR",val_old,val_new)
+#         file1 <- cat_changer(file1,var="PRI_PAYMENT_TRR",val_old,val_new)
+#         
+#         # PRIOR_CARD_SURG_TYPE_TCR
+#         val_old <- seq(1,31)
+#         val_new <- c("CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV",
+#                      "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER",
+#                      "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG","OTHER", "CABG","VALV", "CABG")
+#         file1 <- cat_changer(file1,var="PRIOR_CARD_SURG_TYPE_TCR",val_old,val_new)
+#         
+#         # PROC_TY_HR
+#         val_old <- c(1,2)
+#         val_new <- c("Bicaval","Traditional")
+#         file1 <- cat_changer(file1,var="PROC_TY_HR",val_old,val_new)
+#         
+#         # REGION
+#         val_old <- seq(1,11)
+#         val_new <- c("NE","NE","SE","SE","W","W","MW","MW","NE","MW","SE")
+#         file1 <- cat_changer(file1,var="REGION",val_old,val_new)
+#         
+#         # SHARE_TY"
+#         val_old <- c(3,4)
+#         val_new <- c("LOCAL","REGIONAL")
+#         file1 <- cat_changer(file1,var="SHARE_TY",val_old,val_new)
+#         
+#         # STERNOTOMY_TRR
+#         val_old <- c(1,2,3,998)
+#         val_new <- c("ONE", "MORE","MORE", NA)
+#         file1 <- cat_changer(file1,var="STERNOTOMY_TRR",val_old,val_new)
+#         ###
+#         if (nrow(file1)==1){
+#           file1 <- as.data.frame(t(apply(file1, 2, function(x) gsub("^$| ^", NA, x))), stringsAsFactors=FALSE)
+#         }else{
+#           file1 <- as.data.frame(apply(file1, 2, function(x) gsub("^$| ^", NA, x)), stringsAsFactors=FALSE)
+#         }
+#         
+#         file1[is.na(file1)] <- "UNKOWN"
+#         
+#         if (nrow(file1)==1){
+#           file1 <- as.data.frame(t(apply(file1, 2, find_U)))
+#         }else{
+#           file1 <- as.data.frame(apply(file1, 2, find_U))
+#         }
+#         
+#         file1[,num_vars] <- apply(file1[,num_vars],2,as.numeric)
+#         
+#         
+#         ####
+#         # One-hot encoding for the data
+#         cat_vars <- c(cat_vars, "ETH_MAT")
+#         for (i in 1:length(cat_vars)){
+#           file1[,cat_vars[i]] <- gsub(" ", "", file1[,cat_vars[i]],fixed=TRUE)
+#           file1[,cat_vars[i]] <- factor(file1[,cat_vars[i]], levels=Cat_Levels[[i]])
+#         }
+#         
+#         #new_variables <- c("ETH_MAT", "ANCEF", "DOPAMINE", "HEPARIN", "CARD_SURG")
+#         CAT_match <- check_levels(file1, cat_vars, Cat_Levels)
+#         
+#         if (sum(CAT_match)>0){
+#           return(paste("One or more values for", cat_vars[which(CAT_match==1)],
+#                        "are invalid."))
+#         }else{
+#           renderText("All the categorical values are valid. Now. ")
+#         }
+#         
+#         
+#         if (sum(CAT_match)>0){
+#           error_cat<-paste("One or more values for", cat_vars[which(CAT_match==1)],
+#                            "are invalid.")
+#           is_error<-"YES"
+#           
+#         }else{
+#           error_cat<-paste(" All categorical values are valid. ")
+#         }
+#         if(is_error=="NO"){
+#           
+#           temp.dum <- dummy_maker_app(file1, cat_vars)
+#           
+#           
+#           all_variables <- c()
+#           for (i in 1:11){
+#             all_variables <- c(all_variables, as.character(features[[i]][[1]]))
+#           }
+#           all_variables <- unique(all_variables)
+#           all_num_index <- which(all_variables%in%num_vars)
+#           all_num <- all_variables[all_num_index]  # num variables from LASSO
+#           all_cat <- all_variables[-all_num_index] # cat variables from LASSO
+#           
+#           file1.dum <- matrix(NA, ncol=length(all_variables), nrow=patients_no) 
+#           colnames(file1.dum) <- all_variables
+#           file1.dum <- as.data.frame(file1.dum)
+#           
+#           file1.dum[,all_num] <- file1[,all_num]
+#           
+#           for (i in 1:length(all_cat)){
+#             find_vars <- which(all_cat[i]%in%colnames(temp.dum))
+#             if (length(find_vars)==0){
+#               file1.dum[,all_cat[i]] <- 0 # zero vector
+#             }else{
+#               file1.dum[,all_cat[i]] <- temp.dum[,all_cat[i]]
+#             }
+#           }
+#           
+#           all_year_data <- rep(list(NA),11)
+#           for (i in 1:11){
+#             temp_vars <- as.character(features[[i]][[1]])
+#             temp_data <- file1.dum[,temp_vars]
+#             temp_index <- which(temp_vars%in%all_num)
+#             temp_cat_index <- setdiff(1:ncol(temp_data), temp_index)
+#             for (j in 1:length(temp_cat_index)){
+#               temp_data[,temp_cat_index[j]] <- factor(temp_data[,temp_cat_index[j]])
+#             }
+#             temp_scale <- Num_Scales[[i]]
+#             for (j in 1:length(temp_index)){
+#               var_name <- temp_vars[temp_index[j]]
+#               find_index <- which(temp_scale$Var_names==var_name)
+#               temp_data[,var_name] <- (temp_data[,var_name]-temp_scale[find_index,2])/temp_scale[find_index,3]
+#             }
+#             all_year_data[[i]] <- temp_data
+#           }
+#           
+#           # the following is for prediction but I use the matrix
+#           
+#           names(all_year_data) <- paste0("Year",0:10)
+#           survivals <- matrix(NA, ncol=11, nrow=patients_no)
+#           survival_Probability <- matrix(NA, ncol=11, nrow=patients_no)
+#           
+#           # predictions<-matrix(NA, ncol = 11, nrow = patients_no)
+#           
+#           for (i in 1:11){
+#             # Insert one column with all 1s for the intercept
+#             X <- cbind(INTERCEPT=rep(1,nrow(file1.dum)), all_year_data[[i]])
+#             # Make sure the data type is numeric
+#             if (nrow(X)==1){
+#               X <- as.matrix(t(apply(X, 2, as.numeric)))}else{
+#                 X <- as.matrix(apply(X, 2, as.numeric))
+#               }
+#             # Get the coefficient matrix for the corresponding time point
+#             BETA_X <- log_models[i,colnames(X)]
+#             # Find the fitted value for each patient 
+#             Y <- as.matrix(BETA_X)%*%t(as.matrix(X))
+#             # Find the survival probability for each patient
+#             survivals[,i] <- exp(Y)/(1+exp(Y))
+#           }
+#           
+#           survivals_reverse <- matrix(NA, ncol=11, nrow=nrow(file1.dum))
+#           for (i in 1:11){
+#             survivals_reverse[,i] <- survivals[,(12-i)]
+#           }
+#           
+#           # apply isotonic regression to the probability matrix
+#           survivals_isotonic <- t(apply(survivals_reverse, 1, function(x) isoreg(x)$yf))
+#           
+#           for (i in 1:11){
+#             survival_Probability[,i] <- survivals_isotonic[,(12-i)]
+#           } 
+#           
+#           
+#           # the survival probability matrix after isotonic regression is applied
+#           survival_Probability <- cbind(1:patients_no, survival_Probability)
+#           colnames(survival_Probability) <- c("Patient_No"," Month_1 Survival Prob.", paste(" Year_", 1:10, " Survival Prob.",sep=""))
+#           
+#           survival_Probability <- as.data.frame(survival_Probability) 
+#           outcome<-list()
+#           outcome$survival_Probability<-survival_Probability
+#           outcome$patients_no<-patients_no
+#           outcome$error_no<-error_no
+#           outcome$error_vars<-error_vars
+#           outcome$error_range<-error_range
+#           outcome$error_cat<-error_cat
+#           
+#           return(outcome)
+#         }
+#       }
+#     }
+#   }
+#   if(is_error=="YES"){
+#     outcome<-list()
+#     outcome$survival_Probability<-print(message)
+#     outcome$patients_no<-0
+#     outcome$error_no<-error_no
+#     outcome$error_vars<-error_vars
+#     outcome$error_range<-error_range
+#     outcome$error_cat<-error_cat
+#     return(outcome)
+#   }
+#   
+# }
+# 
+# 
 
 
 
