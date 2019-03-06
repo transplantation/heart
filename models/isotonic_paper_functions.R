@@ -13,7 +13,7 @@
 ## Other levels that are not specified in val_old are put into "OTHER"
 ## Return value: a data object after re-groupping levels in the given variable
 cat_changer<- function(data_set,var,val_old,val_new){
-  temp_var <- as.character(dplyr::pull(data_set,var))
+  temp_var <- dplyr::pull(data_set,var)
   cum_index <-c()
   for (i in 1:length(val_old)){
     index <- which(data_set[,var]==val_old[i])
@@ -391,10 +391,10 @@ find_U <- function(x){
 survivals_cal<-function(patients){
   
   #cat("\014") # Clear the console
-  rm(list=ls())
-  graphics.off()
+  # rm(list=ls())
+  # graphics.off()
   source("https://raw.githubusercontent.com/transplantation/heart/master/models/isotonic_paper_functions.R")
-  library(shiny)
+  # library(shiny)
   # read csv file
   #file1 <- read.csv("https://raw.githubusercontent.com/transplantation/heart/master/models/example_data.csv", stringsAsFactors = FALSE)
   file1 <- patients
